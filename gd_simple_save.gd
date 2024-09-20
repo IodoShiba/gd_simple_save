@@ -4,7 +4,7 @@ const Consts := preload("res://addons/gd_simple_save/internals/consts.gd")
 const ValueCollector := preload("res://addons/gd_simple_save/value_collector.gd")
 const ValueDistributer := preload("res://addons/gd_simple_save/value_distributer.gd")
 const Encoder := preload("res://addons/gd_simple_save/internals/encoder.gd")
-
+const BytesBox := preload("res://addons/gd_simple_save/internals/BytesBox.gd")
 
 # Dictionary[StringName -> Array[Callable]]
 var subjects : Dictionary = {}
@@ -21,8 +21,14 @@ func add_subject(subject_key : StringName, on_store_requested : Callable, on_res
 func remove_subject(subject_key : StringName) -> void:
 	subjects.erase(subject_key)
 
-
-func request_store(save_key : StringName) -> void:
+## Fires all on_store_requested callbacks and save accumulated data to file. [br]
+## [param save_key]: Data will be saved in the file of this name with extension appended.
+## You will also use this key when you want to restore states saved with this method. [br]
+## [param encrypt_key]: key to use encrypt file. keep it empty if you want to save without encryption. [br]
+## [param footer_maker]: Callable<(data : PackedByteArray) -> footer : PackedByteArray> 
+## which returns checksum or so according to byte array representation of saved data.
+## returned value will be appended to the original byte representation. [br]
+func request_store(save_key : StringName, encrypt_key : String = "", footer_maker : Callable = func(__): return PackedByteArray()) -> void:
 	var collectors : Dictionary = {}
 
 	for k in subjects:
@@ -39,25 +45,52 @@ func request_store(save_key : StringName) -> void:
 	if not DirAccess.dir_exists_absolute(get_save_directory_path()):
 		DirAccess.make_dir_recursive_absolute(get_save_directory_path())
 
-	var file := FileAccess.open(to_save_path(save_key), FileAccess.WRITE)
+	var file : FileAccess 
+	if encrypt_key.is_empty():
+		file = FileAccess.open(to_save_path(save_key), FileAccess.WRITE)
+	else :
+		file = FileAccess.open_encrypted_with_pass(to_save_path(save_key), FileAccess.WRITE, encrypt_key)
 	if FileAccess.get_open_error():
-		assert("open error occures. code: %s" % error_string(FileAccess.get_open_error()))
+		assert(false, "open error occures. code: %s" % error_string(FileAccess.get_open_error()))
 		return
 
-	Encoder.write_save_file(file, collectors)
+	var bytes_box := BytesBox.new()
+	
+	if not encrypt_key.is_empty():
+		bytes_box.store_i64(-0x7ACE_BABE_A7E7_AED5)
+
+	Encoder.write_box(bytes_box, collectors, footer_maker)
+
+	bytes_box.write_to(file)
 	file.close()
 
-
-func request_restore(save_key : StringName) -> bool:
+## Load saved file and fires all on_restore_requested callbacks to restore saved data. [br]
+## [param save_key]: Save file name without extension which you want to read and restore from. 
+## [param decrypter]: Key to decrypt content of save file. Leave this empty if the save file was not encrypted. [br]
+## [param footer_checker]: Callable<(data : PackedByteArray, file : FileAccess) -> bool> 
+## which read footer, challenge checksum and returns whether the data acceptable or not.
+## returned value will be appended to the original byte representation. [br]
+func request_restore(save_key : StringName, decrypt_key : String = "", footer_reader : Callable = func(_0, _1): return true) -> bool:
 	if not is_save_file_exists(save_key):
 		push_warning("save file with key %s does not exists." % save_key)
 
-	var file := FileAccess.open(to_save_path(save_key), FileAccess.READ)
+	var file : FileAccess 
+	if decrypt_key.is_empty():
+		file = FileAccess.open(to_save_path(save_key), FileAccess.READ)
+	else:
+		file = FileAccess.open_encrypted_with_pass(to_save_path(save_key), FileAccess.READ, decrypt_key)
 	if FileAccess.get_open_error():
 		push_error("open error occures. code: %s" % error_string(FileAccess.get_open_error()))
 		return false
 
-	var distributers : Dictionary = Encoder.read_save_file(file)
+	# パスワード正当性の確認
+	if not decrypt_key.is_empty():
+		var challenge := file.get_64()
+		if challenge != -0x7ACE_BABE_A7E7_AED5:
+			assert(false, "Incollect password.")
+			return false
+
+	var distributers : Dictionary = Encoder.read_save_file(file, footer_reader)
 
 	for k in subjects:
 		subjects[k][1].call(distributers[k])

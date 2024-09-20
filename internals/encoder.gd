@@ -2,6 +2,7 @@
 
 const ValueCollector := preload("res://addons/gd_simple_save/value_collector.gd")
 const ValueDistributer := preload("res://addons/gd_simple_save/value_distributer.gd")
+const BytesBox := preload("res://addons/gd_simple_save/internals/BytesBox.gd")
 
 ### セーブファイルの構造
 ## 見方
@@ -41,14 +42,31 @@ const ValueDistributer := preload("res://addons/gd_simple_save/value_distributer
 # decode functions
 
 ## return type : Dictionary<StringName -> ValueDistributer>
-static func read_save_file(file : FileAccess) -> Dictionary:
+static func read_save_file(file : FileAccess, footer_reader : Callable) -> Dictionary:
 	var collections_count : int = file.get_64()
 
 	var read := {}
 
 	for __ in collections_count:
-		var subject_key : StringName = StringName(file.get_pascal_string())
-		var saved_collection : Dictionary = read_dictionary(file)
+		var subject_key_length := file.get_64()
+		var maybe_utf8_key := file.get_buffer(subject_key_length)
+		if maybe_utf8_key.is_empty():
+			assert(false, "failed to parse collection key.")
+			return {}
+		var subject_key : StringName = StringName(maybe_utf8_key.get_string_from_utf8())
+		
+		var subject_size : int = file.get_64()
+		var bytes_span := file.get_buffer(subject_size)
+		match footer_reader.call(bytes_span, file):
+			false:
+				push_error("footer checking failed.")
+				return {}
+			true:
+				pass # accepted. do nothing.
+			var not_bool:
+				assert(false, "Invalid return type. returned: %s" % not_bool)
+
+		var saved_collection : Dictionary = read_dictionary(bytes_span)
 		var distributer := ValueDistributer.new()
 		distributer.values = saved_collection
 
@@ -57,113 +75,31 @@ static func read_save_file(file : FileAccess) -> Dictionary:
 	return read
 
 
-static func read_dictionary(file : FileAccess) -> Dictionary:
-	var pairs_count : int = file.get_64()
+static func read_dictionary(bytes : PackedByteArray) -> Dictionary:
+	var decoded : Variant = bytes_to_var(bytes)
+	assert(typeof(decoded) == TYPE_DICTIONARY)
 
-	var dic := {}
-
-	for __ in pairs_count:
-		var key = read_value(file)
-		var value = read_value(file)
-
-		dic[key] = value
-
-	return dic
-
-
-static func read_value(file : FileAccess) -> Variant:
-	var value_type : int = file.get_64()
-
-	match value_type:
-		TYPE_INT:
-			return file.get_64()
-		TYPE_FLOAT:
-			return file.get_double()
-		TYPE_BOOL:
-			var bits := file.get_8()
-			if bits == 0:
-				return false
-			elif bits == 1:
-				return true
-			else:
-				__unexpected("invalid boolean value of %d." % bits)
-				return false
-		TYPE_STRING:
-			return file.get_pascal_string()
-		TYPE_STRING_NAME:
-			return StringName(file.get_pascal_string())
-		TYPE_DICTIONARY:
-			return read_dictionary(file)
-		TYPE_ARRAY:
-			return read_array(file)
-		TYPE_NIL:
-			return null
-		_:
-			return __unexpected("unexpected value type %d." % value_type)
-
-
-static func read_array(file : FileAccess) -> Array:
-	var count := file.get_64()
-
-	var array := []
-
-	for __ in count:
-		array.append(read_value(file))
-
-	return array
+	return decoded
 
 
 # encode functions
 
-static func write_save_file(file : FileAccess, values : Dictionary) -> void:
-	file.store_64(values.size())
+static func write_box(box : BytesBox, values : Dictionary, footer_maker : Callable) -> void:
+	box.store_i64(values.size())
 
 	for k : StringName in values:
-		write_collection(file, k, values[k].values)
+		var collector_each : ValueCollector = values[k]
 
+		var key_utf8 := String(k).to_utf8_buffer()
+		box.store_i64(key_utf8.size())
+		box.store_bytes(key_utf8)
 
-static func write_collection(file : FileAccess, subject_key : StringName, value : Dictionary) -> void:
-	file.store_pascal_string(subject_key)
-	write_dictionary(file, value)
-
-
-static func write_dictionary(file : FileAccess, dic : Dictionary) -> void:
-	file.store_64(dic.size())
-
-	for k in dic:
-		write_value(file, k)
-		write_value(file, dic[k])
-
-
-static func write_value(file : FileAccess, value : Variant) -> void:
-	file.store_64(typeof(value))
-
-	match typeof(value):
-		TYPE_INT:
-			file.store_64(value)
-		TYPE_FLOAT:
-			file.store_double(value)
-		TYPE_BOOL:
-			file.store_8(1 if value else 0)
-		TYPE_STRING:
-			file.store_pascal_string(value)
-		TYPE_STRING_NAME:
-			file.store_pascal_string(String(value))
-		TYPE_DICTIONARY:
-			write_dictionary(file, value)
-		TYPE_ARRAY:
-			write_array(file, value)
-		TYPE_NIL:
-			pass # nil type value takes zero bites. therefore, do nothing.
-
-
-static func write_array(file : FileAccess, array : Array) -> void:
-	file.store_64(array.size())
-
-	for each in array:
-		write_value(file, each)
-
-
-static func __unexpected(message : String) -> Object:
-	assert(false, message)
-	return null
+		var collector_byte_expression := var_to_bytes(collector_each.values)
+		var maybe_footer : Variant = footer_maker.call(collector_byte_expression)
+		assert(typeof(maybe_footer) == TYPE_PACKED_BYTE_ARRAY)
+		var footer : PackedByteArray = maybe_footer
+		
+		box.store_i64(collector_byte_expression.size())
+		box.store_bytes(collector_byte_expression)
+		if not footer.is_empty():
+			box.store_bytes(footer)
