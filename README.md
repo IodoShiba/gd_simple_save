@@ -156,3 +156,6 @@ class TestSaveSubject extends RefCounted:
 		dic_0.clear()
 
 ```
+
+## LICENSE
+This asset is provided under the MIT License. 
