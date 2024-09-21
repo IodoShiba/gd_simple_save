@@ -4,21 +4,21 @@ A small set of GDScript which support storing and restoring states of your game.
 
 ## Installation
 
-1. Simply duplicate folder 'addons/gd_simple_save' to your game project's 'addons' folder.
-2. Add 'gd_simple_save.gd' to the project's Singleton.
-3. Use 'gd_simple_save.gd'.
+1. Simply duplicate folder `addons/gd_simple_save` to your game project's `addons` folder.
+2. Add `gd_simple_save.gd` to the project's Singleton.
+3. Use `gd_simple_save.gd`.
 
 ## How to use
 
-1. Call 'gd_simple_save.gd::add_subject()' to make your values of node storable.
-2. Call 'gd_simple_save.gd::remove_subject()' when your node is no longer need to be saved.
-3. Call 'gd_simple_save.gd::request_store()' to save your game state.
-4. Call 'gd_simple_save.gd::request_restore()' to load and restore your game state.
+1. Call `gd_simple_save.gd::add_subject()` to make your values of node storable.
+2. Call `gd_simple_save.gd::remove_subject()` when your node is no longer need to be saved.
+3. Call `gd_simple_save.gd::request_store()` to save your game state.
+4. Call `gd_simple_save.gd::request_restore()` to load and restore your game state.
 5. This kit supports simple feature which allows you to appending metadata to your savedata, checksumming and encrypting via Godot's standard functionalities.
 
 ## Notes
 
-- Testing this asset conducted via (GUT)[https://github.com].
+- Testing this asset conducted by [GUT]([https://github.com](https://github.com/bitwes/Gut)).
 
 ## Examples
 
