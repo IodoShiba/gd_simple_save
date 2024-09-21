@@ -4,7 +4,7 @@ A small set of GDScript which support storing and restoring states of your game.
 
 ## Installation
 
-1. Simply duplicate folder `addons/gd_simple_save` to your game project's `addons` folder.
+1. Make a new folder in your game project's `addons` folder and duplicate all contents of clone of this repo into it.
 2. Add `gd_simple_save.gd` to the project's Singleton.
 3. Use `gd_simple_save.gd`.
 
