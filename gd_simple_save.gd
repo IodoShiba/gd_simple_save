@@ -67,10 +67,11 @@ func request_store(save_key : StringName, encrypt_key : String = "", footer_make
 ## Load saved file and fires all on_restore_requested callbacks to restore saved data. [br]
 ## [param save_key]: Save file name without extension which you want to read and restore from. 
 ## [param decrypter]: Key to decrypt content of save file. Leave this empty if the save file was not encrypted. [br]
-## [param footer_checker]: Callable<(data : PackedByteArray, file : FileAccess) -> bool> 
+## [param footer_size]: byte size of footer.
+## [param footer_checker]: Callable<(data : PackedByteArray, footer : PackedByteArray) -> bool> 
 ## which read footer, challenge checksum and returns whether the data acceptable or not.
 ## returned value will be appended to the original byte representation. [br]
-func request_restore(save_key : StringName, decrypt_key : String = "", footer_reader : Callable = func(_0, _1): return true) -> bool:
+func request_restore(save_key : StringName, decrypt_key : String = "", footer_size : int = 0, footer_checker : Callable = func(_0, _1): return true) -> bool:
 	if not is_save_file_exists(save_key):
 		push_warning("save file with key %s does not exists." % save_key)
 
@@ -90,7 +91,7 @@ func request_restore(save_key : StringName, decrypt_key : String = "", footer_re
 			assert(false, "Incollect password.")
 			return false
 
-	var distributers : Dictionary = Encoder.read_save_file(file, footer_reader)
+	var distributers : Dictionary = Encoder.read_save_file(file, footer_size, footer_checker)
 
 	for k in subjects:
 		subjects[k][1].call(distributers[k])

@@ -42,7 +42,7 @@ const BytesBox := preload("res://addons/gd_simple_save/internals/BytesBox.gd")
 # decode functions
 
 ## return type : Dictionary<StringName -> ValueDistributer>
-static func read_save_file(file : FileAccess, footer_reader : Callable) -> Dictionary:
+static func read_save_file(file : FileAccess, footer_size : int, footer_reader : Callable) -> Dictionary:
 	var collections_count : int = file.get_64()
 
 	var read := {}
@@ -57,7 +57,8 @@ static func read_save_file(file : FileAccess, footer_reader : Callable) -> Dicti
 		
 		var subject_size : int = file.get_64()
 		var bytes_span := file.get_buffer(subject_size)
-		match footer_reader.call(bytes_span, file):
+		var bytes_footer := file.get_buffer(footer_size)
+		match footer_reader.call(bytes_span, bytes_footer):
 			false:
 				push_error("footer checking failed.")
 				return {}
